@@ -108,3 +108,102 @@ class CharacterMotorJumping {
 	@System.NonSerialized
     var jumpDir : Vector3 = Vector3.up;
 }
+
+class CharacterMotorMovingPlatform {
+    var enabled : boolean = true;
+	
+    var movementTransfer : MovementTransferOnJump = MovementTransferOnJump.PermaTransfer;
+	
+	@System.NonSerialized
+    var hitPlatform : Transform;
+	
+	@System.NonSerialized
+    var activePlatform : Transform;
+	
+	@System.NonSerialized
+    var activeLocalPoint : Vector3;
+	
+	@System.NonSerialized
+    var activeGlobalPoint : Vector3;
+	
+	@System.NonSerialized
+    var activeLocalRotation : Quaternion;
+	
+	@System.NonSerialized
+    var activeGlobalRotation : Quaternion;
+	
+	@System.NonSerialized
+    var lastMatrix : Matrix4x4;
+	
+	@System.NonSerialized
+    var platformVelocity : Vector3;
+	
+	@System.NonSerialized
+    var newPlatform : boolean;
+}
+
+var movingPlatform : CharacterMotorMovingPlatform = CharacterMotorMovingPlatform();
+
+class CharacterMotorSliding {
+    // Does the character slide on too steep surfaces?
+    var enabled : boolean = true;
+	
+    // How fast does the character slide on steep surfaces?
+    var slidingSpeed : float = 15;
+	
+    // How much can the player control the sliding direction?
+    // If the value is 0.5 the player can slide sideways with half the speed of the downwards sliding speed.
+    var sidewaysControl : float = 1.0;
+	
+    // How much can the player influence the sliding speed?
+    // If the value is 0.5 the player can speed the sliding up to 150% or slow it down to 50%.
+    var speedControl : float = 0.4;
+}
+
+var sliding : CharacterMotorSliding = CharacterMotorSliding();
+
+@System.NonSerialized
+var grounded : boolean = true;
+
+@System.NonSerialized
+var groundNormal : Vector3 = Vector3.zero;
+
+private var lastGroundNormal : Vector3 = Vector3.zero;
+
+private var tr : Transform;
+
+private var controller : CharacterController;
+
+function Awake () {
+    controller = GetComponent (CharacterController);
+    tr = transform;
+}
+
+private function UpdateFunction () {
+    // We copy the actual velocity into a temporary variable that we can manipulate.
+    var velocity : Vector3 = movement.velocity;
+	
+    // Update velocity based on input
+    velocity = ApplyInputVelocityChange(velocity);
+	
+    // Apply gravity and jumping force
+    velocity = ApplyGravityAndJumping (velocity);
+	
+    // Moving platform support
+    var moveDistance : Vector3 = Vector3.zero;
+    if (MoveWithPlatform()) {
+        var newGlobalPoint : Vector3 = movingPlatform.activePlatform.TransformPoint(movingPlatform.activeLocalPoint);
+        moveDistance = (newGlobalPoint - movingPlatform.activeGlobalPoint);
+        if (moveDistance != Vector3.zero)
+            controller.Move(moveDistance);
+		
+        // Support moving platform rotation as well:
+        var newGlobalRotation : Quaternion = movingPlatform.activePlatform.rotation * movingPlatform.activeLocalRotation;
+        var rotationDiff : Quaternion = newGlobalRotation * Quaternion.Inverse(movingPlatform.activeGlobalRotation);
+        
+        var yRotation = rotationDiff.eulerAngles.y;
+        if (yRotation != 0) {
+            // Prevent rotation of the local up vector
+            tr.Rotate(0, yRotation, 0);
+        }
+    }
