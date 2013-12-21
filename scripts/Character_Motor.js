@@ -305,3 +305,81 @@ private function UpdateFunction () {
         movingPlatform.activeLocalRotation = Quaternion.Inverse(movingPlatform.activePlatform.rotation) * movingPlatform.activeGlobalRotation; 
     }
 }
+
+function FixedUpdate () {
+    if (movingPlatform.enabled) {
+        if (movingPlatform.activePlatform != null) {
+            if (!movingPlatform.newPlatform) {
+                var lastVelocity : Vector3 = movingPlatform.platformVelocity;
+				
+                movingPlatform.platformVelocity = (
+					movingPlatform.activePlatform.localToWorldMatrix.MultiplyPoint3x4(movingPlatform.activeLocalPoint)
+					- movingPlatform.lastMatrix.MultiplyPoint3x4(movingPlatform.activeLocalPoint)
+				) / Time.deltaTime;
+            }
+            movingPlatform.lastMatrix = movingPlatform.activePlatform.localToWorldMatrix;
+            movingPlatform.newPlatform = false;
+        }
+        else {
+            movingPlatform.platformVelocity = Vector3.zero;	
+        }
+    }
+	
+    if (useFixedUpdate)
+        UpdateFunction();
+}
+
+function Update () {
+    if (!useFixedUpdate)
+        UpdateFunction();
+}
+
+private function ApplyInputVelocityChange (velocity : Vector3) {	
+    if (!canControl)
+        inputMoveDirection = Vector3.zero;
+	
+    // Find desired velocity
+    var desiredVelocity : Vector3;
+    if (grounded && TooSteep()) {
+        // The direction we're sliding in
+        desiredVelocity = Vector3(groundNormal.x, 0, groundNormal.z).normalized;
+        // Find the input movement direction projected onto the sliding direction
+        var projectedMoveDir = Vector3.Project(inputMoveDirection, desiredVelocity);
+        // Add the sliding direction, the spped control, and the sideways control vectors
+        desiredVelocity = desiredVelocity + projectedMoveDir * sliding.speedControl + (inputMoveDirection - projectedMoveDir) * sliding.sidewaysControl;
+        // Multiply with the sliding speed
+        desiredVelocity *= sliding.slidingSpeed;
+    }
+    else
+        desiredVelocity = GetDesiredHorizontalVelocity();
+	
+    if (movingPlatform.enabled && movingPlatform.movementTransfer == MovementTransferOnJump.PermaTransfer) {
+        desiredVelocity += movement.frameVelocity;
+        desiredVelocity.y = 0;
+    }
+	
+    if (grounded)
+        desiredVelocity = AdjustGroundVelocityToNormal(desiredVelocity, groundNormal);
+    else
+        velocity.y = 0;
+	
+    // Enforce max velocity change
+    var maxVelocityChange : float = GetMaxAcceleration(grounded) * Time.deltaTime;
+    var velocityChangeVector : Vector3 = (desiredVelocity - velocity);
+    if (velocityChangeVector.sqrMagnitude > maxVelocityChange * maxVelocityChange) {
+        velocityChangeVector = velocityChangeVector.normalized * maxVelocityChange;
+    }
+    // If we're in the air and don't have control, don't apply any velocity change at all.
+    // If we're on the ground and don't have control we do apply it - it will correspond to friction.
+    if (grounded || canControl)
+        velocity += velocityChangeVector;
+	
+    if (grounded) {
+        // When going uphill, the CharacterController will automatically move up by the needed amount.
+        // Not moving it upwards manually prevent risk of lifting off from the ground.
+        // When going downhill, DO move down manually, as gravity is not enough on steep hills.
+        velocity.y = Mathf.Min(velocity.y, 0);
+    }
+	
+    return velocity;
+}
